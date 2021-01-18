@@ -50,25 +50,40 @@ namespace Shovel
     // 75--76--x---x---x   20--15--10---5---0
 
     // Vertices per mesh in each subdivision level
-    // Level 1:                2^2  = 4
-    // Level 2:  ((2*2)-1)^2 = 3^2  = 9
-    // Level 3:  ((3*2)-1)^2 = 5^2  = 25
-    // Level 4:  ((5*2)-1)^2 = 9^2  = 81
-    // Level 5:  ((9*2)-1)^2 = 17^2 = 289
+    // Level 1:                            2^2   = 4
+    // Level 2:  ((2*2)-1)^2               3^2   = 9
+    // Level 3:  ((3*2)-1)^2               5^2   = 25
+    // Level 4:  ...                       9^2   = 81
+    // Level 5:  ...                       17^2  = 289
+    // Level 6 (level 5 + quad slice 1x1): 33^2  = 1089
+    // Level 7:                            65^2  = 4225
+    // Level 8:                            129^2 = 16641
+    // Level 9:                            257^2 = 66049
+    // Level 10:                           513^2 = 263169
 
     // Total vertices in displacement (including overlaps)
-    // Level 1: 16
-    // Level 2: 36
-    // Level 3: 100
-    // Level 4: 324
-    // Level 5: 1156
+    // Level 1:  16
+    // Level 2:  36
+    // Level 3:  100
+    // Level 4:  324
+    // Level 5:  1156
+    // Level 6:  4356
+    // Level 7:  21125
+    // Level 8:  66564
+    // Level 9:  264196
+    // Level 10: 1052676
 
     // Image resolution (overlapping verts count as 1 pixel)
-    // Level 1: 3x3
-    // Level 2: 5x5
-    // Level 3: 9x9
-    // Level 4: 17x17
-    // Level 5: 33x33
+    // Level 1:  3x3
+    // Level 2:  5x5
+    // Level 3:  9x9
+    // Level 4:  17x17
+    // Level 5:  33x33
+    // Level 6:  65x65
+    // Level 7:  129x129
+    // Level 8:  257x257
+    // Level 9:  513x513
+    // Level 10: 1025x1025
 
     class Displacement
     {
@@ -81,50 +96,30 @@ namespace Shovel
 
         public uint GetPartVertexCount()
         {
-            switch ( SubdivisionLevel )
+            // count at subdivision level 1
+            uint count = 4;
+            uint size = 2;
+
+            for ( uint i = 1; i < SubdivisionLevel; i++ )
             {
-                case 1:
-                    return 4;
-
-                case 2:
-                    return 9;
-
-                case 3:
-                    return 25;
-
-                case 4:
-                    return 81;
-
-                case 5:
-                    return 289;
-
-                default:
-                    throw new InvalidOperationException();
+                size = ( size * 2 - 1 );
+                count = size * size;
             }
+
+            return count;
         }
 
         public uint GetPartSizeInVertices()
         {
-            switch ( SubdivisionLevel )
+            // size at subdivision level 1
+            uint size = 2;
+
+            for ( uint i = 1; i < SubdivisionLevel; i++ )
             {
-                case 1:
-                    return 2;
-
-                case 2:
-                    return 3;
-
-                case 3:
-                    return 5;
-
-                case 4:
-                    return 9;
-
-                case 5:
-                    return 17;
-
-                default:
-                    throw new InvalidOperationException();
+                size = size * 2 - 1;
             }
+
+            return size;
         }
 
         public uint GetTotalVertexCount()
@@ -134,26 +129,15 @@ namespace Shovel
 
         public uint GetSizeInPixels()
         {
-            switch ( SubdivisionLevel )
+            // size at subdivision level 1
+            uint size = 3;
+
+            for ( uint i = 1; i < SubdivisionLevel; i++ )
             {
-                case 1:
-                    return 3;
-
-                case 2:
-                    return 5;
-
-                case 3:
-                    return 9;
-
-                case 4:
-                    return 17;
-
-                case 5:
-                    return 33;
-
-                default:
-                    throw new InvalidOperationException();
+                size = size * 2 - 1;
             }
+
+            return size;
         }
 
         public List<uint> GetPixelIndices( uint x, uint y )
