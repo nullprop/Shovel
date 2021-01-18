@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -9,6 +9,10 @@
     <Compile Remove="lib\**" />
     <EmbeddedResource Remove="lib\**" />
     <None Remove="lib\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="lib\Datamodel.NET\Datamodel.NET.csproj" />
   </ItemGroup>
 
   <ItemGroup>
