@@ -20,17 +20,42 @@ namespace Shovel
             var baseMesh = mapMeshes[0];
             var baseMeshData = baseMesh.Get<Element>("meshData");
 
-            var pixelSize = GetPixelSize(baseMeshData);
-            uint tilingX = 2;
-            uint tilingY = 4;
-            var noise = GetNoise((pixelSize - 1) * (Math.Max(tilingX, tilingY) + 1) + 1);
+            int meshSize;
+            {
+                var vertexData = baseMeshData.Get<Element>("vertexData");
+                var streams = vertexData.Get<ElementArray>("streams");
+                var position = streams[0];
+                var data = position.Get<Vector3Array>("data");
+                meshSize = ( int )( data[2].X - data[0].X );
+            }
+            var sizePixels = GetSizeInPixels(baseMeshData);
+            var pixelUnits = meshSize / sizePixels;
+
+            var imageData = GetNoise(50);
+            imageData = Pad( imageData, sizePixels );
+
+            var tilingX = 1 + (imageData.GetLength(0) - sizePixels) / (sizePixels - 1);
+            var tilingY = 1 + (imageData.GetLength(1) - sizePixels) / (sizePixels - 1);
+
+            // todo: normalize first?
+            var heightMeters = 2f;
+            for ( int x = 0; x < imageData.GetLength( 0 ); x++ )
+            {
+                for ( int y = 0; y < imageData.GetLength( 1 ); y++ )
+                {
+                    imageData[x, y] *= Convert.MetersToUnits( heightMeters );
+                }
+            }
+
+            var terrainSizeX = tilingX * meshSize;
+            var terrainSizeY = tilingY * meshSize;
 
             for ( uint x = 0; x < tilingX; x++ )
             {
-                var offsetX = x * (pixelSize - 1);
+                var offsetX = x * (sizePixels - 1);
                 for ( uint y = 0; y < tilingY; y++ )
                 {
-                    var offsetY = y * (pixelSize - 1);
+                    var offsetY = y * (sizePixels - 1);
 
                     Element mesh;
                     if ( x == 0 && y == 0 )
@@ -45,23 +70,40 @@ namespace Shovel
 
                     // Displacement
                     var meshData = mesh.Get<Element>("meshData");
-                    WriteTile( meshData, noise, offsetX, offsetY );
+                    WriteTile( meshData, imageData, offsetX, offsetY );
 
-                    // Offset origin
-                    // FIXME: this doesn't get applied for some reason
-                    var origin = mesh.Get<Vector3>("origin");
-                    origin = new Vector3( 1024 * x, 1024 * y, 0 );
-
-                    // Offset vertex positions
+                    // Offset vertex positions and center terrain to grid
                     var vertexData = meshData.Get<Element>("vertexData");
                     var streams = vertexData.Get<ElementArray>("streams");
                     var position = streams[0];
                     var data = position.Get<Vector3Array>("data");
                     for ( var i = 0; i < data.Count; i++ )
                     {
-                        Vector3 vec = data[i] + new Vector3(1024 * x, 1024 * y, 0);
+                        Vector3 corner = new Vector3();
+                        if ( i == 1 )
+                        {
+                            corner.X = meshSize;
+                        }
+                        else if ( i == 2 )
+                        {
+                            corner.X = meshSize;
+                            corner.Y = meshSize;
+                        }
+                        else if ( i == 3 )
+                        {
+                            corner.Y = meshSize;
+                        }
+
+                        Vector3 vec = new Vector3(meshSize * x, meshSize * y, 0);
+                        vec -= new Vector3( terrainSizeX * 0.5f, terrainSizeY * 0.5f, 0 );
+                        vec += corner;
                         data[i] = vec;
                     }
+
+                    // Offset origin
+                    // FIXME: this doesn't get applied for some reason
+                    var origin = mesh.Get<Vector3>("origin");
+                    origin = ( data[0] + data[2] ) / 2;
                 }
             }
 
@@ -72,7 +114,7 @@ namespace Shovel
             MapFile.Dispose();
         }
 
-        static uint GetPixelSize( Element meshData )
+        static uint GetSizeInPixels( Element meshData )
         {
             var subdivisionData = meshData.Get<Element>("subdivisionData");
 
@@ -156,12 +198,50 @@ namespace Shovel
             {
                 for ( var y = 0; y < size; y++ )
                 {
-                    var height = (float)rand.NextDouble() * 64.0f;
+                    var height = (float)rand.NextDouble();
                     noise[x, y] = height;
                 }
             }
 
             return noise;
+        }
+
+        static float[,] Pad( float[,] imageData, uint tileSize )
+        {
+            var minSize = tileSize;
+            var increment = tileSize - 1;
+
+            var sizeX = minSize;
+            var sizeY = minSize;
+
+            while ( sizeX < imageData.GetLength( 0 ) )
+            {
+                sizeX += increment;
+            }
+
+            while ( sizeY < imageData.GetLength( 1 ) )
+            {
+                sizeY += increment;
+            }
+
+            float[,] newArr = new float[sizeX, sizeY];
+
+            for ( int x = 0; x < sizeX; x++ )
+            {
+                for ( int y = 0; y < sizeY; y++ )
+                {
+                    if ( x < imageData.GetLength( 0 ) && y < imageData.GetLength( 1 ) )
+                    {
+                        newArr[x, y] = imageData[x, y];
+                    }
+                    else
+                    {
+                        newArr[x, y] = 0;
+                    }
+                }
+            }
+
+            return newArr;
         }
 
         static void Dump( DM dm, string path )
