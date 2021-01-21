@@ -17,38 +17,56 @@ namespace Shovel
 
             var world = dm.AllElements.Single(e => e.ClassName == "CMapWorld");
             var mapMeshes = world.Get<ElementArray>("children");
-            var baseMeshData = mapMeshes[0].Get<Element>("meshData");
+            var baseMesh = mapMeshes[0];
+            var baseMeshData = baseMesh.Get<Element>("meshData");
 
             var pixelSize = GetPixelSize(baseMeshData);
             uint tilingX = 2;
-            uint tilingY = 2;
-            var noise = GetNoise((pixelSize - 1) * Math.Max(tilingX, tilingY) + 1);
+            uint tilingY = 4;
+            var noise = GetNoise((pixelSize - 1) * (Math.Max(tilingX, tilingY) + 1) + 1);
 
-            mapMeshes.Clear();
-            dm.AllElements.Trim();
-
-            for ( var x = 0; x < tilingX; x++ )
+            for ( uint x = 0; x < tilingX; x++ )
             {
-                var offsetX = tilingX * (pixelSize - 1);
-                for ( var y = 0; y < tilingY; y++ )
+                var offsetX = x * (pixelSize - 1);
+                for ( uint y = 0; y < tilingY; y++ )
                 {
-                    var offsetY = tilingY * (pixelSize - 1);
+                    var offsetY = y * (pixelSize - 1);
 
-                    baseMeshData.ID = Guid.NewGuid();
-                    // todo: children need new ids
-                    dm.ImportElement(baseMeshData, DM.ImportRecursionMode.Recursive, DM.ImportOverwriteMode.All);
-                    mapMeshes.Add(baseMeshData);
+                    Element mesh;
+                    if ( x == 0 && y == 0 )
+                    {
+                        mesh = baseMesh;
+                    }
+                    else
+                    {
+                        mesh = dm.ImportElement( baseMesh, DM.ImportRecursionMode.Recursive, DM.ImportOverwriteMode.Copy );
+                        mapMeshes.Add( mesh );
+                    }
 
-                    var meshData = mapMeshes.Last();
-
+                    // Displacement
+                    var meshData = mesh.Get<Element>("meshData");
                     WriteTile( meshData, noise, offsetX, offsetY );
 
-                    // todo: offset position
+                    // Offset origin
+                    // FIXME: this doesn't get applied for some reason
+                    var origin = mesh.Get<Vector3>("origin");
+                    origin = new Vector3( 1024 * x, 1024 * y, 0 );
+
+                    // Offset vertex positions
+                    var vertexData = meshData.Get<Element>("vertexData");
+                    var streams = vertexData.Get<ElementArray>("streams");
+                    var position = streams[0];
+                    var data = position.Get<Vector3Array>("data");
+                    for ( var i = 0; i < data.Count; i++ )
+                    {
+                        Vector3 vec = data[i] + new Vector3(1024 * x, 1024 * y, 0);
+                        data[i] = vec;
+                    }
                 }
             }
 
-            dm.Save( @"C:\Program Files (x86)\Steam\steamapps\common\SteamVR\tools\steamvr_environments\content\steamtours_addons\copsandrobbers\maps\displacement_test2.vmap", "binary", 9 );
             Dump( dm, @"output.txt" );
+            dm.Save( @"C:\Program Files (x86)\Steam\steamapps\common\SteamVR\tools\steamvr_environments\content\steamtours_addons\copsandrobbers\maps\displacement_test2.vmap", "binary", 9 );
 
             dm.Dispose();
             MapFile.Dispose();
