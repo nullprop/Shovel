@@ -2,6 +2,7 @@
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Numerics;
 using Datamodel;
 using DM = Datamodel.Datamodel;
@@ -10,9 +11,23 @@ namespace Shovel
 {
     class Program
     {
-        static void Main( string[] args )
+        static int Main( string[] args )
         {
-            FileStream MapFile = File.Open( @"./data/base.vmap", FileMode.Open );
+            if ( args.Length != 3 )
+            {
+                return Usage();
+            }
+            string imageFile = args[0];
+            float maxHeight;
+            if ( !float.TryParse( args[1], out maxHeight ) )
+            {
+                return Usage();
+            }
+            string outFile = args[2];
+
+            var bitmap = new Bitmap(imageFile);
+
+            FileStream MapFile = File.Open( @"data/base.vmap", FileMode.Open );
             var dm = DM.Load(MapFile);
 
             var world = dm.AllElements.Single(e => e.ClassName == "CMapWorld");
@@ -31,19 +46,24 @@ namespace Shovel
             var sizePixels = GetSizeInPixels(baseMeshData);
             var pixelUnits = meshSize / sizePixels;
 
-            var imageData = GetNoise(50);
+            var imageData = new float[bitmap.Width, bitmap.Height];
+            for ( var x = 0; x < bitmap.Width; x++ )
+            {
+                for ( var y = 0; y < bitmap.Height; y++ )
+                {
+                    imageData[x, y] = bitmap.GetPixel( x, y ).GetBrightness();
+                }
+            }
             imageData = Pad( imageData, sizePixels );
 
             var tilingX = 1 + (imageData.GetLength(0) - sizePixels) / (sizePixels - 1);
             var tilingY = 1 + (imageData.GetLength(1) - sizePixels) / (sizePixels - 1);
 
-            // todo: normalize first?
-            var heightMeters = 2f;
             for ( int x = 0; x < imageData.GetLength( 0 ); x++ )
             {
                 for ( int y = 0; y < imageData.GetLength( 1 ); y++ )
                 {
-                    imageData[x, y] *= Convert.MetersToUnits( heightMeters );
+                    imageData[x, y] *= Convert.MetersToUnits( maxHeight );
                 }
             }
 
@@ -108,10 +128,19 @@ namespace Shovel
             }
 
             Dump( dm, @"output.txt" );
-            dm.Save( @"C:\Program Files (x86)\Steam\steamapps\common\SteamVR\tools\steamvr_environments\content\steamtours_addons\copsandrobbers\maps\displacement_test2.vmap", "binary", 9 );
+            dm.Save( @$"{outFile}", "binary", 9 );
 
             dm.Dispose();
             MapFile.Dispose();
+
+            return 0;
+        }
+
+        static int Usage()
+        {
+            Console.WriteLine( "Invalid args" );
+            Console.WriteLine( "Usage: Shovel.exe <heightmap>.(BMP|GIF|EXIF|JPG|PNG|TIFF) <max_height (meters)> <map_out>.vmap" );
+            return 1;
         }
 
         static uint GetSizeInPixels( Element meshData )
