@@ -1,7 +1,6 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
-using System.Collections.Generic;
 using System.Drawing;
 using System.Numerics;
 using Datamodel;
@@ -13,16 +12,11 @@ namespace Shovel
     {
         static int Main( string[] args )
         {
-            if ( args.Length != 3 )
+            if ( args.Length != 3 || !float.TryParse( args[1], out float maxHeight ) )
             {
                 return Usage();
             }
             string imageFile = args[0];
-            float maxHeight;
-            if ( !float.TryParse( args[1], out maxHeight ) )
-            {
-                return Usage();
-            }
             string outFile = args[2];
 
             var bitmap = new Bitmap(imageFile);
@@ -51,21 +45,13 @@ namespace Shovel
             {
                 for ( var y = 0; y < bitmap.Height; y++ )
                 {
-                    imageData[x, y] = bitmap.GetPixel( x, y ).GetBrightness();
+                    imageData[x, y] = bitmap.GetPixel( x, y ).GetBrightness() * Convert.MetersToUnits( maxHeight );
                 }
             }
             imageData = Pad( imageData, sizePixels );
 
             var tilingX = 1 + (imageData.GetLength(0) - sizePixels) / (sizePixels - 1);
             var tilingY = 1 + (imageData.GetLength(1) - sizePixels) / (sizePixels - 1);
-
-            for ( int x = 0; x < imageData.GetLength( 0 ); x++ )
-            {
-                for ( int y = 0; y < imageData.GetLength( 1 ); y++ )
-                {
-                    imageData[x, y] *= Convert.MetersToUnits( maxHeight );
-                }
-            }
 
             var terrainSizeX = tilingX * meshSize;
             var terrainSizeY = tilingY * meshSize;
@@ -127,7 +113,6 @@ namespace Shovel
                 }
             }
 
-            Dump( dm, @"output.txt" );
             dm.Save( @$"{outFile}", "binary", 9 );
 
             dm.Dispose();
@@ -177,12 +162,9 @@ namespace Shovel
                 }
             }
 
-            var disp = new Displacement(subdivisionLevel);
-            var pixelSize = disp.GetSizeInPixels();
-
             var streams = subdivisionData.Get<ElementArray>("streams");
-            var texCoord = streams[0];
             var displacement = streams[1];
+            var disp = new Displacement(subdivisionLevel);
 
             WriteHeight( displacement, disp, height, offsetX, offsetY );
         }
@@ -216,23 +198,6 @@ namespace Shovel
                     }
                 }
             }
-        }
-
-        static float[,] GetNoise( uint size )
-        {
-            var noise = new float[size, size];
-            var rand = new Random();
-
-            for ( var x = 0; x < size; x++ )
-            {
-                for ( var y = 0; y < size; y++ )
-                {
-                    var height = (float)rand.NextDouble();
-                    noise[x, y] = height;
-                }
-            }
-
-            return noise;
         }
 
         static float[,] Pad( float[,] imageData, uint tileSize )
@@ -271,52 +236,6 @@ namespace Shovel
             }
 
             return newArr;
-        }
-
-        static void Dump( DM dm, string path )
-        {
-            FileStream OutFile = File.Open( path, FileMode.Create );
-            StreamWriter OutStream = new StreamWriter(OutFile);
-
-            dm.AllElements.ToList().ForEach( e =>
-            {
-                OutStream.WriteLine( "Object:  " );
-                OutStream.WriteLine( $"  Name: {e.Name}" );
-                OutStream.WriteLine( $"  ClassName: {e.ClassName}" );
-                OutStream.WriteLine( $"  ID: {e.ID}" );
-                OutStream.WriteLine( $"  Owner: {e.Owner}" );
-                OutStream.WriteLine( $"  Stub: {e.Stub}" );
-                OutStream.WriteLine( $"  Keys/Values:" );
-                for ( var i = 0; i < e.Keys.Count; i++ )
-                {
-                    var val = e.Values.ElementAtOrDefault( i );
-                    var key = e.Keys.ElementAtOrDefault( i );
-                    OutStream.WriteLine( $"    {key} = {val}" );
-
-                    if ( val == null )
-                        continue;
-
-                    if ( key == "asset_preview_thumbnail" )
-                        continue;
-
-                    if ( val is System.Collections.IList list )
-                    {
-                        if ( list.Count == 0 )
-                        {
-                            OutStream.WriteLine( $"      [empty]" );
-                        }
-
-                        foreach ( var el in list )
-                        {
-                            OutStream.WriteLine( $"      {el}" );
-                        }
-                    }
-                }
-                OutStream.WriteLine( "" );
-            } );
-
-            OutStream.Dispose();
-            OutFile.Dispose();
         }
     }
 }
