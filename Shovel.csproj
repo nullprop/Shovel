@@ -21,4 +21,8 @@
     </Reference>
   </ItemGroup>
 
+  <Target Name="PreBuild" BeforeTargets="PreBuildEvent">
+    <Exec Command="xcopy &quot;$(ProjectDir)data&quot; &quot;$(TargetDir)data&quot; /e /y /i /r" />
+  </Target>
+
 </Project>

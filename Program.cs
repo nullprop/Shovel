@@ -12,7 +12,7 @@ namespace Shovel
     {
         static void Main( string[] args )
         {
-            FileStream MapFile = File.Open( @"C:\Program Files (x86)\Steam\steamapps\common\SteamVR\tools\steamvr_environments\content\steamtours_addons\copsandrobbers\maps\displacemen_test.vmap", FileMode.Open );
+            FileStream MapFile = File.Open( @"./data/base.vmap", FileMode.Open );
             var dm = DM.Load(MapFile);
 
             var world = dm.AllElements.Single(e => e.ClassName == "CMapWorld");
