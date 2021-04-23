@@ -3,239 +3,255 @@ using System.IO;
 using System.Linq;
 using System.Drawing;
 using System.Numerics;
+using CommandLine;
 using Datamodel;
 using DM = Datamodel.Datamodel;
+using System.Collections.Generic;
 
 namespace Shovel
 {
-    class Program
-    {
-        static int Main( string[] args )
-        {
-            if ( args.Length != 3 || !float.TryParse( args[1], out float maxHeight ) )
-            {
-                return Usage();
-            }
-            string imageFile = args[0];
-            string outFile = args[2];
+	class Program
+	{
+		public class Options
+		{
+			[Option( 'h', "heightmap", Required = true, HelpText = "The height map to use. Accepted formats: BMP | GIF | EXIF | JPG | PNG | TIFF" )]
+			public string Heightmap { get; set; }
 
-            var bitmap = new Bitmap(imageFile);
+			[Option( 'o', "output", Required = true, HelpText = "The output file" )]
+			public string Output { get; set; }
 
-            FileStream MapFile = File.Open( @"data/base.vmap", FileMode.Open );
-            var dm = DM.Load(MapFile);
+			[Option( 'z', "scalez", Required = false, Default = 1.0f, HelpText = "The Z scale of your terrain in metres (48hu). Pure white pixels in the heightmap will be this height." )]
+			public float ScaleZ { get; set; }
+		}
 
-            var world = dm.AllElements.Single(e => e.ClassName == "CMapWorld");
-            var mapMeshes = world.Get<ElementArray>("children");
-            var baseMesh = mapMeshes[0];
-            var baseMeshData = baseMesh.Get<Element>("meshData");
+		static int Main( string[] args )
+		{
+			Parser.Default.ParseArguments<Options>( args )
+				.WithParsed( Run )
+				.WithNotParsed( HandleParseError );
+			return 0;
+		}
 
-            int meshSize;
-            {
-                var vertexData = baseMeshData.Get<Element>("vertexData");
-                var streams = vertexData.Get<ElementArray>("streams");
-                var position = streams[0];
-                var data = position.Get<Vector3Array>("data");
-                meshSize = ( int )( data[2].X - data[0].X );
-            }
-            var sizePixels = GetSizeInPixels(baseMeshData);
-            var pixelUnits = meshSize / sizePixels;
+		static void Run( Options options )
+		{
+			var bitmap = new Bitmap(options.Heightmap);
 
-            var imageData = new float[bitmap.Width, bitmap.Height];
-            for ( var x = 0; x < bitmap.Width; x++ )
-            {
-                for ( var y = 0; y < bitmap.Height; y++ )
-                {
-                    imageData[x, y] = bitmap.GetPixel( x, y ).GetBrightness() * Convert.MetersToUnits( maxHeight );
-                }
-            }
-            imageData = Pad( imageData, sizePixels );
+			FileStream MapFile = File.Open( @"data/base.vmap", FileMode.Open );
+			var dm = DM.Load(MapFile);
 
-            var tilingX = 1 + (imageData.GetLength(0) - sizePixels) / (sizePixels - 1);
-            var tilingY = 1 + (imageData.GetLength(1) - sizePixels) / (sizePixels - 1);
+			var world = dm.AllElements.Single(e => e.ClassName == "CMapWorld");
+			var mapMeshes = world.Get<ElementArray>("children");
+			var baseMesh = mapMeshes[0];
+			var baseMeshData = baseMesh.Get<Element>("meshData");
 
-            var terrainSizeX = tilingX * meshSize;
-            var terrainSizeY = tilingY * meshSize;
+			int meshSize;
+			{
+				var vertexData = baseMeshData.Get<Element>("vertexData");
+				var streams = vertexData.Get<ElementArray>("streams");
+				var position = streams[0];
+				var data = position.Get<Vector3Array>("data");
+				meshSize = ( int )( data[2].X - data[0].X );
+			}
+			var sizePixels = GetSizeInPixels(baseMeshData);
+			var pixelUnits = meshSize / sizePixels;
 
-            for ( uint x = 0; x < tilingX; x++ )
-            {
-                var offsetX = x * (sizePixels - 1);
-                for ( uint y = 0; y < tilingY; y++ )
-                {
-                    var offsetY = y * (sizePixels - 1);
+			var imageData = new float[bitmap.Width, bitmap.Height];
+			for ( var x = 0; x < bitmap.Width; x++ )
+			{
+				for ( var y = 0; y < bitmap.Height; y++ )
+				{
+					imageData[x, y] = bitmap.GetPixel( x, y ).GetBrightness() * Convert.MetersToUnits( options.ScaleZ );
+				}
+			}
+			imageData = Pad( imageData, sizePixels );
 
-                    Element mesh;
-                    if ( x == 0 && y == 0 )
-                    {
-                        mesh = baseMesh;
-                    }
-                    else
-                    {
-                        mesh = dm.ImportElement( baseMesh, DM.ImportRecursionMode.Recursive, DM.ImportOverwriteMode.Copy );
-                        mapMeshes.Add( mesh );
-                    }
+			var tilingX = 1 + (imageData.GetLength(0) - sizePixels) / (sizePixels - 1);
+			var tilingY = 1 + (imageData.GetLength(1) - sizePixels) / (sizePixels - 1);
 
-                    // Displacement
-                    var meshData = mesh.Get<Element>("meshData");
-                    WriteTile( meshData, imageData, offsetX, offsetY );
+			var terrainSizeX = tilingX * meshSize;
+			var terrainSizeY = tilingY * meshSize;
 
-                    // Offset vertex positions and center terrain to grid
-                    var vertexData = meshData.Get<Element>("vertexData");
-                    var streams = vertexData.Get<ElementArray>("streams");
-                    var position = streams[0];
-                    var data = position.Get<Vector3Array>("data");
-                    for ( var i = 0; i < data.Count; i++ )
-                    {
-                        Vector3 corner = new Vector3();
-                        if ( i == 1 )
-                        {
-                            corner.X = meshSize;
-                        }
-                        else if ( i == 2 )
-                        {
-                            corner.X = meshSize;
-                            corner.Y = meshSize;
-                        }
-                        else if ( i == 3 )
-                        {
-                            corner.Y = meshSize;
-                        }
+			for ( uint x = 0; x < tilingX; x++ )
+			{
+				var offsetX = x * (sizePixels - 1);
+				for ( uint y = 0; y < tilingY; y++ )
+				{
+					var offsetY = y * (sizePixels - 1);
 
-                        Vector3 vec = new Vector3(meshSize * x, meshSize * y, 0);
-                        vec -= new Vector3( terrainSizeX * 0.5f, terrainSizeY * 0.5f, 0 );
-                        vec += corner;
-                        data[i] = vec;
-                    }
+					Element mesh;
+					if ( x == 0 && y == 0 )
+					{
+						mesh = baseMesh;
+					}
+					else
+					{
+						mesh = dm.ImportElement( baseMesh, DM.ImportRecursionMode.Recursive, DM.ImportOverwriteMode.Copy );
+						mapMeshes.Add( mesh );
+					}
 
-                    // Offset origin
-                    // FIXME: this doesn't get applied for some reason
-                    var origin = mesh.Get<Vector3>("origin");
-                    origin = ( data[0] + data[2] ) / 2;
-                }
-            }
+					// Displacement
+					var meshData = mesh.Get<Element>("meshData");
+					WriteTile( meshData, imageData, offsetX, offsetY );
 
-            dm.Save( @$"{outFile}", "binary", 9 );
+					// Offset vertex positions and center terrain to grid
+					var vertexData = meshData.Get<Element>("vertexData");
+					var streams = vertexData.Get<ElementArray>("streams");
+					var position = streams[0];
+					var data = position.Get<Vector3Array>("data");
+					for ( var i = 0; i < data.Count; i++ )
+					{
+						Vector3 corner = new Vector3();
+						if ( i == 1 )
+						{
+							corner.X = meshSize;
+						}
+						else if ( i == 2 )
+						{
+							corner.X = meshSize;
+							corner.Y = meshSize;
+						}
+						else if ( i == 3 )
+						{
+							corner.Y = meshSize;
+						}
 
-            dm.Dispose();
-            MapFile.Dispose();
+						Vector3 vec = new Vector3(meshSize * x, meshSize * y, 0);
+						vec -= new Vector3( terrainSizeX * 0.5f, terrainSizeY * 0.5f, 0 );
+						vec += corner;
+						data[i] = vec;
+					}
 
-            return 0;
-        }
+					// Offset origin
+					// FIXME: this doesn't get applied for some reason
+					var origin = mesh.Get<Vector3>("origin");
+					origin = ( data[0] + data[2] ) / 2;
+				}
+			}
 
-        static int Usage()
-        {
-            Console.WriteLine( "Invalid args" );
-            Console.WriteLine( "Usage: Shovel.exe <heightmap>.(BMP|GIF|EXIF|JPG|PNG|TIFF) <max_height (meters)> <map_out>.vmap" );
-            return 1;
-        }
+			dm.Save( @$"{options.Output}", "binary", 9 );
 
-        static uint GetSizeInPixels( Element meshData )
-        {
-            var subdivisionData = meshData.Get<Element>("subdivisionData");
+			dm.Dispose();
+			MapFile.Dispose();
 
-            uint subdivisionLevel = 0;
-            var levels = subdivisionData.Get<IntArray>("subdivisionLevels");
-            for ( var i = 0; i < levels.Count; i++ )
-            {
-                if ( levels[i] > 0 )
-                {
-                    subdivisionLevel = ( uint )levels[i];
-                    break;
-                }
-            }
+			Console.WriteLine( @$"Saved to {options.Output}" );
+		}
 
-            var disp = new Displacement(subdivisionLevel);
-            return disp.GetSizeInPixels();
-        }
+		static void HandleParseError( IEnumerable<Error> errs )
+		{
+			foreach ( var err in errs )
+			{
+				Console.WriteLine( err.ToString() );
+			}
+		}
 
-        static void WriteTile( Element meshData, float[,] height, uint offsetX, uint offsetY )
-        {
-            var subdivisionData = meshData.Get<Element>("subdivisionData");
+		static uint GetSizeInPixels( Element meshData )
+		{
+			var subdivisionData = meshData.Get<Element>("subdivisionData");
 
-            uint subdivisionLevel = 0;
-            var levels = subdivisionData.Get<IntArray>("subdivisionLevels");
-            for ( var i = 0; i < levels.Count; i++ )
-            {
-                if ( levels[i] > 0 )
-                {
-                    subdivisionLevel = ( uint )levels[i];
-                    break;
-                }
-            }
+			uint subdivisionLevel = 0;
+			var levels = subdivisionData.Get<IntArray>("subdivisionLevels");
+			for ( var i = 0; i < levels.Count; i++ )
+			{
+				if ( levels[i] > 0 )
+				{
+					subdivisionLevel = ( uint )levels[i];
+					break;
+				}
+			}
 
-            var streams = subdivisionData.Get<ElementArray>("streams");
-            var displacement = streams[1];
-            var disp = new Displacement(subdivisionLevel);
+			var disp = new Displacement(subdivisionLevel);
+			return disp.GetSizeInPixels();
+		}
 
-            WriteHeight( displacement, disp, height, offsetX, offsetY );
-        }
+		static void WriteTile( Element meshData, float[,] height, uint offsetX, uint offsetY )
+		{
+			var subdivisionData = meshData.Get<Element>("subdivisionData");
 
-        static void WriteHeight( Element displacement, Displacement disp, float[,] height, uint offsetX, uint offsetY )
-        {
-            var size = disp.GetSizeInPixels();
-            if ( height.GetLength( 0 ) < size + offsetX )
-                throw new InvalidOperationException();
-            if ( height.GetLength( 1 ) < size + offsetY )
-                throw new InvalidOperationException();
+			uint subdivisionLevel = 0;
+			var levels = subdivisionData.Get<IntArray>("subdivisionLevels");
+			for ( var i = 0; i < levels.Count; i++ )
+			{
+				if ( levels[i] > 0 )
+				{
+					subdivisionLevel = ( uint )levels[i];
+					break;
+				}
+			}
 
-            var data = displacement.Get<Vector3Array>("data");
+			var streams = subdivisionData.Get<ElementArray>("streams");
+			var displacement = streams[1];
+			var disp = new Displacement(subdivisionLevel);
 
-            for ( var x = 0; x < size; x++ )
-            {
-                for ( var y = 0; y < size; y++ )
-                {
-                    var indices = disp.GetPixelIndices((uint)x, (uint)y);
-                    foreach ( var index in indices )
-                    {
-                        Vector3 v = new Vector3(0, 0, height[x + offsetX, y + offsetY]);
-                        if ( index < data.Count )
-                        {
-                            data[( int )index] = v;
-                        }
-                        else
-                        {
-                            data.Add( v );
-                        }
-                    }
-                }
-            }
-        }
+			WriteHeight( displacement, disp, height, offsetX, offsetY );
+		}
 
-        static float[,] Pad( float[,] imageData, uint tileSize )
-        {
-            var minSize = tileSize;
-            var increment = tileSize - 1;
+		static void WriteHeight( Element displacement, Displacement disp, float[,] height, uint offsetX, uint offsetY )
+		{
+			var size = disp.GetSizeInPixels();
+			if ( height.GetLength( 0 ) < size + offsetX )
+				throw new InvalidOperationException();
+			if ( height.GetLength( 1 ) < size + offsetY )
+				throw new InvalidOperationException();
 
-            var sizeX = minSize;
-            var sizeY = minSize;
+			var data = displacement.Get<Vector3Array>("data");
 
-            while ( sizeX < imageData.GetLength( 0 ) )
-            {
-                sizeX += increment;
-            }
+			for ( var x = 0; x < size; x++ )
+			{
+				for ( var y = 0; y < size; y++ )
+				{
+					var indices = disp.GetPixelIndices((uint)x, (uint)y);
+					foreach ( var index in indices )
+					{
+						Vector3 v = new Vector3(0, 0, height[x + offsetX, y + offsetY]);
+						if ( index < data.Count )
+						{
+							data[( int )index] = v;
+						}
+						else
+						{
+							data.Add( v );
+						}
+					}
+				}
+			}
+		}
 
-            while ( sizeY < imageData.GetLength( 1 ) )
-            {
-                sizeY += increment;
-            }
+		static float[,] Pad( float[,] imageData, uint tileSize )
+		{
+			var minSize = tileSize;
+			var increment = tileSize - 1;
 
-            float[,] newArr = new float[sizeX, sizeY];
+			var sizeX = minSize;
+			var sizeY = minSize;
 
-            for ( int x = 0; x < sizeX; x++ )
-            {
-                for ( int y = 0; y < sizeY; y++ )
-                {
-                    if ( x < imageData.GetLength( 0 ) && y < imageData.GetLength( 1 ) )
-                    {
-                        newArr[x, y] = imageData[x, y];
-                    }
-                    else
-                    {
-                        newArr[x, y] = 0;
-                    }
-                }
-            }
+			while ( sizeX < imageData.GetLength( 0 ) )
+			{
+				sizeX += increment;
+			}
 
-            return newArr;
-        }
-    }
+			while ( sizeY < imageData.GetLength( 1 ) )
+			{
+				sizeY += increment;
+			}
+
+			float[,] newArr = new float[sizeX, sizeY];
+
+			for ( int x = 0; x < sizeX; x++ )
+			{
+				for ( int y = 0; y < sizeY; y++ )
+				{
+					if ( x < imageData.GetLength( 0 ) && y < imageData.GetLength( 1 ) )
+					{
+						newArr[x, y] = imageData[x, y];
+					}
+					else
+					{
+						newArr[x, y] = 0;
+					}
+				}
+			}
+
+			return newArr;
+		}
+	}
 }

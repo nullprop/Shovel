@@ -2,7 +2,7 @@
   "profiles": {
     "Shovel": {
       "commandName": "Project",
-      "commandLineArgs": "data/sample.jpg 55 out.vmap"
+      "commandLineArgs": "-h data/sample.jpg -z 55 -o out.vmap"
     }
   }
 }
