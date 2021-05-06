@@ -60,7 +60,9 @@ namespace Shovel
 			{
 				for ( var y = 0; y < bitmap.Height; y++ )
 				{
-					imageData[x, y] = bitmap.GetPixel( x, y ).GetBrightness() * Convert.MetersToUnits( options.ScaleZ );
+					// y-axis seems to be inverted in hammer (https://github.com/laurirasanen/Shovel/issues/1)
+					var invY = bitmap.Height - y - 1;
+					imageData[x, invY] = bitmap.GetPixel( x, y ).GetBrightness() * Convert.MetersToUnits( options.ScaleZ );
 				}
 			}
 			imageData = Pad( imageData, sizePixels );
